@@ -13,87 +13,65 @@ const FacultyHTMLDisplay = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Scroll to top whenever slug changes
-    window.scrollTo(0, 0);
-    
     const fetchFacultyHTML = async () => {
       try {
         setLoading(true);
 
-        // Map slug (generated from faculty name) → actual HTML filename
-        // To find a slug: generateSlug("Prof. Nandini C.P") → "prof-nandini-c-p"
         const fileMap: Record<string, string> = {
           "prof-dr-d-surya-prakasa-rao": "prof-d-surya-prakasa-rao",
           "prof-nandini-c-p": "prof-nandini-c-p",
           "dr-dayananda-murthy-c-p": "dr-dayananda-murthy-c-p",
-          // Add more mappings here as you add HTML files, e.g.:
-          // "dr-p-jogi-naidu": "dr-p-jogi-naidu",
+          "dr-p-jogi-naidu": "dr-p-jogi-naidu",
+          "dr-r-bharat-kumar": "dr-r-bharat-kumar",
+          "dr-soma-battacharjya": "ms-soma-battacharjya-m-a-ll-m",
+          "dr-n-bhagya-lakshmi": "dr-namballa-bhagyalakshmi",
+          "dr-ch-lakshmi": "dr-lakshmi-chebolu",
         };
 
         const fileName = fileMap[slug || ""] ?? slug;
         const filePath = `/src/faculty/${fileName}.html`;
 
         const response = await fetch(filePath);
-
-        if (!response.ok) {
-          throw new Error(`Faculty page not found: ${filePath}`);
-        }
+        if (!response.ok) throw new Error(`Not found: ${filePath}`);
 
         const html = await response.text();
-
-        // Parse the HTML
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
 
-        // Extract faculty name from title
+        // Faculty name from title
         const titleEl = doc.querySelector("title");
         if (titleEl) {
-          const rawTitle = titleEl.textContent || "";
           setFacultyName(
-            rawTitle
+            (titleEl.textContent || "")
               .replace(/\s*-\s*DSNLU Faculty\s*$/i, "")
               .replace(/\s*-\s*DAMODARAM.*$/i, "")
               .trim()
           );
         }
 
-        // Extract the main tab content (col-md-9)
         const mainCol = doc.querySelector(".col-md-9");
-        if (mainCol) {
-          setProfileContent(mainCol.innerHTML);
-        }
+        if (mainCol) setProfileContent(mainCol.innerHTML);
 
-        // Extract sidebar (col-md-3)
         const sidebarCol = doc.querySelector(".col-md-3");
-        if (sidebarCol) {
-          setSidebarContent(sidebarCol.innerHTML);
-        }
+        if (sidebarCol) setSidebarContent(sidebarCol.innerHTML);
 
-        // Scroll to top after content loads
-        window.scrollTo(0, 0);
         setError(null);
       } catch (err) {
         console.error("Error loading faculty HTML:", err);
         setError("Faculty member not found");
-        // Still scroll to top even if there's an error
-        window.scrollTo(0, 0);
       } finally {
         setLoading(false);
       }
     };
 
-    if (slug) {
-      fetchFacultyHTML();
-    }
+    if (slug) fetchFacultyHTML();
   }, [slug]);
 
-  // ✅ KEY FIX: Initialize tabs inside a useEffect that runs AFTER the HTML
-  // is rendered into the DOM via dangerouslySetInnerHTML.
-  // A <script> tag inside dangerouslySetInnerHTML never executes in React.
+  // Initialize Bootstrap-style pill tabs — scripts inside dangerouslySetInnerHTML
+  // never execute in React, so we wire up clicks via useEffect after render
   useEffect(() => {
     if (!profileContent) return;
 
-    // Small delay to ensure dangerouslySetInnerHTML has painted
     const timer = setTimeout(() => {
       const container = document.querySelector(".faculty-profile-content");
       if (!container) return;
@@ -110,38 +88,51 @@ const FacultyHTMLDisplay = () => {
 
           // Deactivate all
           pills.forEach((l) => l.parentElement?.classList.remove("active"));
-          container.querySelectorAll(".tab-pane").forEach((p) => {
-            p.classList.remove("active", "in");
-          });
+          container.querySelectorAll(".tab-pane").forEach((p) =>
+            p.classList.remove("active", "in")
+          );
 
           // Activate clicked
           link.parentElement?.classList.add("active");
           const pane = container.querySelector(target);
-          if (pane) pane.classList.add("active", "in");
+          if (pane) {
+            pane.classList.add("active", "in");
+            // Scroll to top when changing tabs
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         });
       });
 
-      // Activate the first tab
-      const firstActiveLi = container.querySelector(".nav-pills li.active a");
-      if (firstActiveLi) {
-        const firstTarget = firstActiveLi.getAttribute("href");
-        if (firstTarget) {
-          const firstPane = container.querySelector(firstTarget);
-          if (firstPane) firstPane.classList.add("active", "in");
-        }
-      } else if (pills.length > 0) {
-        // Fallback: activate first pill
-        pills[0].parentElement?.classList.add("active");
-        const firstTarget = pills[0].getAttribute("href");
-        if (firstTarget) {
-          const firstPane = container.querySelector(firstTarget);
-          if (firstPane) firstPane.classList.add("active", "in");
+      // Activate first tab on load
+      const firstActive = container.querySelector<HTMLAnchorElement>(".nav-pills li.active a");
+      const firstLink = firstActive ?? pills[0];
+      if (firstLink) {
+        firstLink.parentElement?.classList.add("active");
+        const target = firstLink.getAttribute("href");
+        if (target) {
+          const pane = container.querySelector(target);
+          if (pane) pane.classList.add("active", "in");
         }
       }
+      
+      // Scroll to top after tabs are initialized
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [profileContent]); // re-runs every time new HTML is loaded
+  }, [profileContent]);
+
+  // Effect to scroll to top when content changes
+  useEffect(() => {
+    if (!loading && (profileContent || sidebarContent)) {
+      // Use a slight delay to ensure content is fully rendered
+      const timer = setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [profileContent, sidebarContent, loading]);
 
   if (loading) {
     return (
@@ -209,9 +200,18 @@ const FacultyHTMLDisplay = () => {
         {/* Faculty Content */}
         <div className="py-12 container">
           <div className="flex flex-col lg:flex-row gap-10">
-            {/* Sidebar */}
+
+            {/* Main profile content — left */}
+            {profileContent && (
+              <div
+                className="flex-1 faculty-profile-content bg-white rounded-2xl shadow p-8"
+                dangerouslySetInnerHTML={{ __html: profileContent }}
+              />
+            )}
+
+            {/* Sidebar — right */}
             {sidebarContent && (
-              <aside className="lg:w-64 flex-shrink-0">
+              <aside className="lg:w-72 flex-shrink-0">
                 <div
                   className="faculty-sidebar bg-white rounded-2xl shadow p-6 text-center sticky top-6"
                   dangerouslySetInnerHTML={{ __html: sidebarContent }}
@@ -219,140 +219,152 @@ const FacultyHTMLDisplay = () => {
               </aside>
             )}
 
-            {/* Main profile content */}
-            {profileContent && (
-              <div
-                className="flex-1 faculty-profile-content bg-white rounded-2xl shadow p-8"
-                dangerouslySetInnerHTML={{ __html: profileContent }}
-              />
-            )}
           </div>
         </div>
       </main>
 
-      {/* Scoped styles for injected HTML */}
       <style>{`
-        .faculty-profile-content h2.bborder {
-          font-size: 1.1rem;
-          font-weight: 700;
-          color: #0f2d5c;
-          border-bottom: 2px solid #c9a84c;
-          padding-bottom: 6px;
-          margin-bottom: 14px;
-          margin-top: 28px;
-        }
-        .faculty-profile-content ul.profile-div {
-          list-style: none;
-          padding: 0;
-          margin-bottom: 16px;
-        }
-        .faculty-profile-content ul.profile-div li {
-          margin-bottom: 8px;
-          text-align: justify;
-        }
-        .faculty-profile-content ul:not(.profile-div):not(.nav):not(.nav-pills) {
-          padding-left: 1.5rem;
-          margin-bottom: 16px;
-        }
-        .faculty-profile-content ul:not(.profile-div):not(.nav):not(.nav-pills) li {
-          margin-bottom: 6px;
-          text-align: justify;
-        }
-        .faculty-profile-content ol {
-          padding-left: 1.5rem;
-          margin-bottom: 16px;
-        }
-        .faculty-profile-content ol li {
-          margin-bottom: 6px;
-          text-align: justify;
-        }
-        .faculty-profile-content table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 20px;
-          font-size: 0.85rem;
-          overflow-x: auto;
-          display: block;
-        }
-        .faculty-profile-content table thead tr {
-          background: #0f2d5c !important;
-          color: white;
-        }
-        .faculty-profile-content table th,
-        .faculty-profile-content table td {
-          border: 1px solid #ddd;
-          padding: 8px 10px;
-          text-align: left;
-          vertical-align: top;
-        }
-        .faculty-profile-content table tbody tr:nth-child(even) {
-          background: #f9f9f9;
-        }
-        .faculty-profile-content p {
-          margin-bottom: 12px;
-          text-align: justify;
-        }
-        .faculty-profile-content strong,
-        .faculty-profile-content b {
-          color: #0f2d5c;
+        /* ─── RESET problematic Tailwind overrides inside injected HTML ─── */
+        .faculty-profile-content *,
+        .faculty-sidebar * {
+          box-sizing: border-box;
         }
 
-        /* ── Tab Pills ── */
+        /* ─── TAB PILLS ─── */
         .faculty-profile-content .nav-pills {
-          display: flex;
+          display: flex !important;
           flex-wrap: wrap;
           gap: 8px;
-          list-style: none;
-          padding: 0;
-          margin-bottom: 24px;
+          list-style: none !important;
+          padding: 0 !important;
+          margin: 0 0 24px !important;
           float: none !important;
+        }
+        .faculty-profile-content .nav-pills li {
+          margin: 0 !important;
+          padding: 0 !important;
         }
         .faculty-profile-content .nav-pills li a {
           display: inline-block;
-          padding: 8px 20px;
+          padding: 7px 22px;
           border-radius: 9999px;
-          background: #f3f4f6;
+          background: #f0f0f0;
           color: #0f2d5c;
           font-weight: 600;
           font-size: 0.875rem;
           text-decoration: none;
           cursor: pointer;
           transition: background 0.2s, color 0.2s;
+          white-space: nowrap;
         }
         .faculty-profile-content .nav-pills li.active a,
         .faculty-profile-content .nav-pills li a:hover {
           background: #c9a84c;
-          color: white;
+          color: #fff;
         }
 
-        /* ── Tab Panes ── */
+        /* ─── TAB PANES ─── */
         .faculty-profile-content .tab-content {
-          overflow: visible;
           clear: both;
+          overflow: visible;
         }
         .faculty-profile-content .tab-content .tab-pane {
-          display: none;
+          display: none !important;
         }
         .faculty-profile-content .tab-content .tab-pane.active {
-          display: block;
+          display: block !important;
         }
 
-        /* ── Vertical tabs layout override ── */
-        .faculty-profile-content .vertical-tabs {
-          display: block;
-        }
-        .faculty-profile-content .pull-left {
-          float: none !important;
+        /* ─── Layout fixes for vertical-tabs structure ─── */
+        .faculty-profile-content .vertical-tabs { display: block; }
+        .faculty-profile-content .pull-left { float: none !important; }
+
+        /* ─── Section headings ─── */
+        .faculty-profile-content h2.bborder {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #333;
+          border-bottom: 2px solid #c9a84c;
+          padding-bottom: 6px;
+          margin: 0 0 16px !important;
+          margin-top: 4px !important;
         }
 
-        /* ── Sidebar ── */
+        /* ─── Paragraphs — keep natural flow, no word-break ─── */
+        .faculty-profile-content p {
+          font-size: 0.9rem;
+          line-height: 1.7;
+          color: #333;
+          margin-bottom: 8px;
+          text-align: left;
+          word-break: normal;
+          overflow-wrap: normal;
+          white-space: normal;
+        }
+        .faculty-profile-content p strong,
+        .faculty-profile-content p b {
+          color: #0f2d5c;
+        }
+
+        /* ─── Ordered lists (Publications, Conferences) ─── */
+        .faculty-profile-content ol {
+          padding-left: 1.5rem;
+          margin: 0 0 16px;
+        }
+        .faculty-profile-content ol li {
+          font-size: 0.875rem;
+          line-height: 1.65;
+          color: #333;
+          margin-bottom: 6px;
+          text-align: justify;
+        }
+
+        /* ─── Unordered lists (Research & Teaching bullets etc) ─── */
+        .faculty-profile-content ul:not(.nav-pills):not(.nav) {
+          padding-left: 1.5rem !important;
+          margin: 0 0 16px !important;
+          list-style: disc !important;
+        }
+        .faculty-profile-content ul:not(.nav-pills):not(.nav) li {
+          font-size: 0.875rem;
+          line-height: 1.65;
+          color: #333;
+          margin-bottom: 6px;
+          text-align: left;
+          list-style: disc !important;
+          display: list-item !important;
+        }
+
+        /* ─── Tables ─── */
+        .faculty-profile-content table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 20px;
+          font-size: 0.85rem;
+        }
+        .faculty-profile-content table th,
+        .faculty-profile-content table td {
+          border: 1px solid #ddd;
+          padding: 7px 10px;
+          text-align: left;
+          vertical-align: top;
+        }
+        .faculty-profile-content table thead tr {
+          background: #0f2d5c;
+          color: #fff;
+        }
+        .faculty-profile-content table tbody tr:nth-child(even) {
+          background: #f9f9f9;
+        }
+
+        /* ─── SIDEBAR ─── */
         .faculty-sidebar img.singel-user-img {
-          width: 160px;
-          height: 160px;
+          width: 180px;
+          height: 180px;
           object-fit: cover;
           border-radius: 50%;
           border: 4px solid #c9a84c;
-          margin: 0 auto 12px;
+          margin: 0 auto 16px;
           display: block;
         }
         .faculty-sidebar h2,
@@ -360,23 +372,29 @@ const FacultyHTMLDisplay = () => {
           font-size: 1rem;
           font-weight: 700;
           color: #0f2d5c;
-          margin: 0 0 4px;
+          margin: 0 0 4px !important;
           border: none !important;
           padding: 0 !important;
         }
         .faculty-sidebar .position {
-          color: #666;
-          font-size: 0.875rem;
+          color: #555;
+          font-size: 0.825rem;
           margin: 2px 0;
+          display: block;
         }
         .faculty-sidebar h6.bborder {
-          font-size: 0.8rem;
+          font-size: 0.78rem;
           font-weight: 700;
           color: #0f2d5c;
-          border-bottom: 1px solid #c9a84c;
-          padding-bottom: 4px;
-          margin: 12px 0 4px;
+          border-bottom: 1px solid #c9a84c !important;
+          padding-bottom: 4px !important;
+          margin: 14px 0 4px !important;
           text-transform: uppercase;
+        }
+        .faculty-sidebar p {
+          font-size: 0.825rem;
+          color: #444;
+          margin: 2px 0 8px;
         }
       `}</style>
 
