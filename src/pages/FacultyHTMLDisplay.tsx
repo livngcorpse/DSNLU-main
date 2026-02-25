@@ -13,17 +13,24 @@ const FacultyHTMLDisplay = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Scroll to top whenever slug changes
+    window.scrollTo(0, 0);
+    
     const fetchFacultyHTML = async () => {
       try {
         setLoading(true);
-        // Map slug to the actual HTML file name
+
+        // Map slug (generated from faculty name) → actual HTML filename
+        // To find a slug: generateSlug("Prof. Nandini C.P") → "prof-nandini-c-p"
         const fileMap: Record<string, string> = {
           "prof-dr-d-surya-prakasa-rao": "prof-d-surya-prakasa-rao",
+          "prof-nandini-c-p": "prof-nandini-c-p",
           "dr-dayananda-murthy-c-p": "dr-dayananda-murthy-c-p",
-          "dr-nandini-c-p": "dr-nandini-c-p",
+          // Add more mappings here as you add HTML files, e.g.:
+          // "dr-p-jogi-naidu": "dr-p-jogi-naidu",
         };
 
-        const fileName = fileMap[slug || ""] || slug;
+        const fileName = fileMap[slug || ""] ?? slug;
         const filePath = `/src/faculty/${fileName}.html`;
 
         const response = await fetch(filePath);
@@ -38,13 +45,13 @@ const FacultyHTMLDisplay = () => {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
 
-        // Extract faculty name from title or h2
+        // Extract faculty name from title
         const titleEl = doc.querySelector("title");
         if (titleEl) {
           const rawTitle = titleEl.textContent || "";
           setFacultyName(
             rawTitle
-              .replace(/\s*-\s*DSNLU Faculty\s*$/, "")
+              .replace(/\s*-\s*DSNLU Faculty\s*$/i, "")
               .replace(/\s*-\s*DAMODARAM.*$/i, "")
               .trim()
           );
@@ -53,13 +60,6 @@ const FacultyHTMLDisplay = () => {
         // Extract the main tab content (col-md-9)
         const mainCol = doc.querySelector(".col-md-9");
         if (mainCol) {
-          // Fix relative image URLs
-          mainCol.querySelectorAll("img").forEach((img) => {
-            const src = img.getAttribute("src");
-            if (src && src.startsWith("https://")) {
-              // already absolute, keep
-            }
-          });
           setProfileContent(mainCol.innerHTML);
         }
 
@@ -69,10 +69,14 @@ const FacultyHTMLDisplay = () => {
           setSidebarContent(sidebarCol.innerHTML);
         }
 
+        // Scroll to top after content loads
+        window.scrollTo(0, 0);
         setError(null);
       } catch (err) {
         console.error("Error loading faculty HTML:", err);
         setError("Faculty member not found");
+        // Still scroll to top even if there's an error
+        window.scrollTo(0, 0);
       } finally {
         setLoading(false);
       }
@@ -82,6 +86,62 @@ const FacultyHTMLDisplay = () => {
       fetchFacultyHTML();
     }
   }, [slug]);
+
+  // ✅ KEY FIX: Initialize tabs inside a useEffect that runs AFTER the HTML
+  // is rendered into the DOM via dangerouslySetInnerHTML.
+  // A <script> tag inside dangerouslySetInnerHTML never executes in React.
+  useEffect(() => {
+    if (!profileContent) return;
+
+    // Small delay to ensure dangerouslySetInnerHTML has painted
+    const timer = setTimeout(() => {
+      const container = document.querySelector(".faculty-profile-content");
+      if (!container) return;
+
+      const pills = container.querySelectorAll<HTMLAnchorElement>(
+        '.nav-pills a[data-toggle="pill"]'
+      );
+
+      pills.forEach((link) => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          const target = link.getAttribute("href");
+          if (!target) return;
+
+          // Deactivate all
+          pills.forEach((l) => l.parentElement?.classList.remove("active"));
+          container.querySelectorAll(".tab-pane").forEach((p) => {
+            p.classList.remove("active", "in");
+          });
+
+          // Activate clicked
+          link.parentElement?.classList.add("active");
+          const pane = container.querySelector(target);
+          if (pane) pane.classList.add("active", "in");
+        });
+      });
+
+      // Activate the first tab
+      const firstActiveLi = container.querySelector(".nav-pills li.active a");
+      if (firstActiveLi) {
+        const firstTarget = firstActiveLi.getAttribute("href");
+        if (firstTarget) {
+          const firstPane = container.querySelector(firstTarget);
+          if (firstPane) firstPane.classList.add("active", "in");
+        }
+      } else if (pills.length > 0) {
+        // Fallback: activate first pill
+        pills[0].parentElement?.classList.add("active");
+        const firstTarget = pills[0].getAttribute("href");
+        if (firstTarget) {
+          const firstPane = container.querySelector(firstTarget);
+          if (firstPane) firstPane.classList.add("active", "in");
+        }
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [profileContent]); // re-runs every time new HTML is loaded
 
   if (loading) {
     return (
@@ -172,8 +232,7 @@ const FacultyHTMLDisplay = () => {
 
       {/* Scoped styles for injected HTML */}
       <style>{`
-        .faculty-profile-content h2.bborder,
-        .faculty-sidebar h2 {
+        .faculty-profile-content h2.bborder {
           font-size: 1.1rem;
           font-weight: 700;
           color: #0f2d5c;
@@ -191,11 +250,11 @@ const FacultyHTMLDisplay = () => {
           margin-bottom: 8px;
           text-align: justify;
         }
-        .faculty-profile-content ul:not(.profile-div):not(.nav) {
+        .faculty-profile-content ul:not(.profile-div):not(.nav):not(.nav-pills) {
           padding-left: 1.5rem;
           margin-bottom: 16px;
         }
-        .faculty-profile-content ul:not(.profile-div):not(.nav) li {
+        .faculty-profile-content ul:not(.profile-div):not(.nav):not(.nav-pills) li {
           margin-bottom: 6px;
           text-align: justify;
         }
@@ -233,27 +292,31 @@ const FacultyHTMLDisplay = () => {
           margin-bottom: 12px;
           text-align: justify;
         }
-        .faculty-profile-content strong, .faculty-profile-content b {
+        .faculty-profile-content strong,
+        .faculty-profile-content b {
           color: #0f2d5c;
         }
-        /* Tabs */
+
+        /* ── Tab Pills ── */
         .faculty-profile-content .nav-pills {
           display: flex;
           flex-wrap: wrap;
-          gap: 6px;
+          gap: 8px;
           list-style: none;
           padding: 0;
           margin-bottom: 24px;
+          float: none !important;
         }
         .faculty-profile-content .nav-pills li a {
           display: inline-block;
-          padding: 8px 18px;
+          padding: 8px 20px;
           border-radius: 9999px;
           background: #f3f4f6;
           color: #0f2d5c;
           font-weight: 600;
           font-size: 0.875rem;
           text-decoration: none;
+          cursor: pointer;
           transition: background 0.2s, color 0.2s;
         }
         .faculty-profile-content .nav-pills li.active a,
@@ -261,28 +324,45 @@ const FacultyHTMLDisplay = () => {
           background: #c9a84c;
           color: white;
         }
+
+        /* ── Tab Panes ── */
+        .faculty-profile-content .tab-content {
+          overflow: visible;
+          clear: both;
+        }
         .faculty-profile-content .tab-content .tab-pane {
           display: none;
         }
         .faculty-profile-content .tab-content .tab-pane.active {
           display: block;
         }
-        /* Sidebar image */
+
+        /* ── Vertical tabs layout override ── */
+        .faculty-profile-content .vertical-tabs {
+          display: block;
+        }
+        .faculty-profile-content .pull-left {
+          float: none !important;
+        }
+
+        /* ── Sidebar ── */
         .faculty-sidebar img.singel-user-img {
-          width: 180px;
-          height: 180px;
+          width: 160px;
+          height: 160px;
           object-fit: cover;
           border-radius: 50%;
           border: 4px solid #c9a84c;
           margin: 0 auto 12px;
           display: block;
         }
-        .faculty-sidebar h2 {
-          font-size: 1.1rem;
+        .faculty-sidebar h2,
+        .faculty-sidebar h3 {
+          font-size: 1rem;
           font-weight: 700;
           color: #0f2d5c;
           margin: 0 0 4px;
-          border: none;
+          border: none !important;
+          padding: 0 !important;
         }
         .faculty-sidebar .position {
           color: #666;
@@ -298,58 +378,7 @@ const FacultyHTMLDisplay = () => {
           margin: 12px 0 4px;
           text-transform: uppercase;
         }
-        /* Vertical tabs layout fix */
-        .faculty-profile-content .vertical-tabs {
-          display: block;
-        }
-        .faculty-profile-content .pull-left.nav-pills {
-          float: none;
-          flex-direction: row;
-        }
-        .faculty-profile-content .tab-content {
-          overflow: visible;
-        }
       `}</style>
-
-      {/* Script to activate Bootstrap-style tabs */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              function initTabs() {
-                var pills = document.querySelectorAll('.faculty-profile-content .nav-pills a[data-toggle="pill"]');
-                pills.forEach(function(link) {
-                  link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    var target = this.getAttribute('href');
-                    // deactivate all
-                    pills.forEach(function(l) { l.parentElement.classList.remove('active'); });
-                    document.querySelectorAll('.faculty-profile-content .tab-pane').forEach(function(p) {
-                      p.classList.remove('active', 'in');
-                    });
-                    // activate clicked
-                    this.parentElement.classList.add('active');
-                    var pane = document.querySelector(target);
-                    if (pane) pane.classList.add('active', 'in');
-                  });
-                });
-                // activate first tab
-                var firstPill = document.querySelector('.faculty-profile-content .nav-pills li.active a');
-                if (firstPill) {
-                  var firstTarget = firstPill.getAttribute('href');
-                  var firstPane = document.querySelector(firstTarget);
-                  if (firstPane) firstPane.classList.add('active', 'in');
-                }
-              }
-              if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initTabs);
-              } else {
-                setTimeout(initTabs, 100);
-              }
-            })();
-          `,
-        }}
-      />
 
       <Footer />
     </div>
