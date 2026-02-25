@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 
 const FacultyHTMLDisplay = () => {
   const { slug } = useParams<{ slug: string }>();
-  const [htmlContent, setHtmlContent] = useState<string | null>(null);
+  const [profileContent, setProfileContent] = useState<string | null>(null);
+  const [sidebarContent, setSidebarContent] = useState<string | null>(null);
+  const [facultyName, setFacultyName] = useState<string>("Faculty Profile");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,21 +16,63 @@ const FacultyHTMLDisplay = () => {
     const fetchFacultyHTML = async () => {
       try {
         setLoading(true);
-        // Construct the path to the faculty HTML file
-        const filePath = `/faculty/${slug}.html`;
-        
+        // Map slug to the actual HTML file name
+        const fileMap: Record<string, string> = {
+          "prof-dr-d-surya-prakasa-rao": "prof-d-surya-prakasa-rao",
+          "dr-dayananda-murthy-c-p": "dr-dayananda-murthy-c-p",
+          "dr-nandini-c-p": "dr-nandini-c-p",
+        };
+
+        const fileName = fileMap[slug || ""] || slug;
+        const filePath = `/src/faculty/${fileName}.html`;
+
         const response = await fetch(filePath);
-        
+
         if (!response.ok) {
           throw new Error(`Faculty page not found: ${filePath}`);
         }
-        
+
         const html = await response.text();
-        setHtmlContent(html);
+
+        // Parse the HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        // Extract faculty name from title or h2
+        const titleEl = doc.querySelector("title");
+        if (titleEl) {
+          const rawTitle = titleEl.textContent || "";
+          setFacultyName(
+            rawTitle
+              .replace(/\s*-\s*DSNLU Faculty\s*$/, "")
+              .replace(/\s*-\s*DAMODARAM.*$/i, "")
+              .trim()
+          );
+        }
+
+        // Extract the main tab content (col-md-9)
+        const mainCol = doc.querySelector(".col-md-9");
+        if (mainCol) {
+          // Fix relative image URLs
+          mainCol.querySelectorAll("img").forEach((img) => {
+            const src = img.getAttribute("src");
+            if (src && src.startsWith("https://")) {
+              // already absolute, keep
+            }
+          });
+          setProfileContent(mainCol.innerHTML);
+        }
+
+        // Extract sidebar (col-md-3)
+        const sidebarCol = doc.querySelector(".col-md-3");
+        if (sidebarCol) {
+          setSidebarContent(sidebarCol.innerHTML);
+        }
+
         setError(null);
       } catch (err) {
-        console.error('Error loading faculty HTML:', err);
-        setError('Faculty member not found');
+        console.error("Error loading faculty HTML:", err);
+        setError("Faculty member not found");
       } finally {
         setLoading(false);
       }
@@ -45,6 +89,7 @@ const FacultyHTMLDisplay = () => {
         <Header />
         <main className="flex-1 flex items-center justify-center py-20">
           <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-gold border-t-transparent mx-auto mb-4" />
             <p className="text-lg text-muted-foreground">Loading faculty details...</p>
           </div>
         </main>
@@ -53,14 +98,16 @@ const FacultyHTMLDisplay = () => {
     );
   }
 
-  if (error || !htmlContent) {
+  if (error || (!profileContent && !sidebarContent)) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
         <Header />
         <main className="flex-1 flex items-center justify-center py-20">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-red-600 mb-4">Faculty Member Not Found</h1>
-            <p className="text-lg text-gray-600 mb-6">The faculty member you're looking for doesn't exist or may have been moved.</p>
+            <p className="text-lg text-gray-600 mb-6">
+              The faculty member you're looking for doesn't exist or may have been moved.
+            </p>
             <Link to="/people/faculty" className="text-gold hover:underline font-medium">
               ← Back to Faculty Directory
             </Link>
@@ -70,17 +117,6 @@ const FacultyHTMLDisplay = () => {
       </div>
     );
   }
-
-  // Extract title from HTML content if possible
-  const extractTitle = () => {
-    const titleMatch = htmlContent.match(/<title>(.*?)<\/title>/i);
-    if (titleMatch) {
-      return titleMatch[1].replace(/\s*-\s*DAMODARAM SANJIVAYYA NATIONAL LAW UNIVERSITY\s*$/, '');
-    }
-    return "Faculty Details";
-  };
-
-  const facultyName = extractTitle();
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -99,7 +135,7 @@ const FacultyHTMLDisplay = () => {
           </div>
         </div>
 
-        {/* Hero Section */}
+        {/* Hero */}
         <section className="relative bg-[#0f2d5c] py-16 overflow-hidden">
           <div className="absolute inset-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1523050335392-9bc501535231?auto=format&fit=crop&q=80')] bg-cover bg-center" />
           <div className="container relative z-10 text-center">
@@ -110,14 +146,211 @@ const FacultyHTMLDisplay = () => {
           </div>
         </section>
 
-        {/* Main Content - Inject the HTML content here */}
-        <div className="py-16 container">
-          <div 
-            className="faculty-html-content"
-            dangerouslySetInnerHTML={{ __html: htmlContent }} 
-          />
+        {/* Faculty Content */}
+        <div className="py-12 container">
+          <div className="flex flex-col lg:flex-row gap-10">
+            {/* Sidebar */}
+            {sidebarContent && (
+              <aside className="lg:w-64 flex-shrink-0">
+                <div
+                  className="faculty-sidebar bg-white rounded-2xl shadow p-6 text-center sticky top-6"
+                  dangerouslySetInnerHTML={{ __html: sidebarContent }}
+                />
+              </aside>
+            )}
+
+            {/* Main profile content */}
+            {profileContent && (
+              <div
+                className="flex-1 faculty-profile-content bg-white rounded-2xl shadow p-8"
+                dangerouslySetInnerHTML={{ __html: profileContent }}
+              />
+            )}
+          </div>
         </div>
       </main>
+
+      {/* Scoped styles for injected HTML */}
+      <style>{`
+        .faculty-profile-content h2.bborder,
+        .faculty-sidebar h2 {
+          font-size: 1.1rem;
+          font-weight: 700;
+          color: #0f2d5c;
+          border-bottom: 2px solid #c9a84c;
+          padding-bottom: 6px;
+          margin-bottom: 14px;
+          margin-top: 28px;
+        }
+        .faculty-profile-content ul.profile-div {
+          list-style: none;
+          padding: 0;
+          margin-bottom: 16px;
+        }
+        .faculty-profile-content ul.profile-div li {
+          margin-bottom: 8px;
+          text-align: justify;
+        }
+        .faculty-profile-content ul:not(.profile-div):not(.nav) {
+          padding-left: 1.5rem;
+          margin-bottom: 16px;
+        }
+        .faculty-profile-content ul:not(.profile-div):not(.nav) li {
+          margin-bottom: 6px;
+          text-align: justify;
+        }
+        .faculty-profile-content ol {
+          padding-left: 1.5rem;
+          margin-bottom: 16px;
+        }
+        .faculty-profile-content ol li {
+          margin-bottom: 6px;
+          text-align: justify;
+        }
+        .faculty-profile-content table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 20px;
+          font-size: 0.85rem;
+          overflow-x: auto;
+          display: block;
+        }
+        .faculty-profile-content table thead tr {
+          background: #0f2d5c !important;
+          color: white;
+        }
+        .faculty-profile-content table th,
+        .faculty-profile-content table td {
+          border: 1px solid #ddd;
+          padding: 8px 10px;
+          text-align: left;
+          vertical-align: top;
+        }
+        .faculty-profile-content table tbody tr:nth-child(even) {
+          background: #f9f9f9;
+        }
+        .faculty-profile-content p {
+          margin-bottom: 12px;
+          text-align: justify;
+        }
+        .faculty-profile-content strong, .faculty-profile-content b {
+          color: #0f2d5c;
+        }
+        /* Tabs */
+        .faculty-profile-content .nav-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          list-style: none;
+          padding: 0;
+          margin-bottom: 24px;
+        }
+        .faculty-profile-content .nav-pills li a {
+          display: inline-block;
+          padding: 8px 18px;
+          border-radius: 9999px;
+          background: #f3f4f6;
+          color: #0f2d5c;
+          font-weight: 600;
+          font-size: 0.875rem;
+          text-decoration: none;
+          transition: background 0.2s, color 0.2s;
+        }
+        .faculty-profile-content .nav-pills li.active a,
+        .faculty-profile-content .nav-pills li a:hover {
+          background: #c9a84c;
+          color: white;
+        }
+        .faculty-profile-content .tab-content .tab-pane {
+          display: none;
+        }
+        .faculty-profile-content .tab-content .tab-pane.active {
+          display: block;
+        }
+        /* Sidebar image */
+        .faculty-sidebar img.singel-user-img {
+          width: 180px;
+          height: 180px;
+          object-fit: cover;
+          border-radius: 50%;
+          border: 4px solid #c9a84c;
+          margin: 0 auto 12px;
+          display: block;
+        }
+        .faculty-sidebar h2 {
+          font-size: 1.1rem;
+          font-weight: 700;
+          color: #0f2d5c;
+          margin: 0 0 4px;
+          border: none;
+        }
+        .faculty-sidebar .position {
+          color: #666;
+          font-size: 0.875rem;
+          margin: 2px 0;
+        }
+        .faculty-sidebar h6.bborder {
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: #0f2d5c;
+          border-bottom: 1px solid #c9a84c;
+          padding-bottom: 4px;
+          margin: 12px 0 4px;
+          text-transform: uppercase;
+        }
+        /* Vertical tabs layout fix */
+        .faculty-profile-content .vertical-tabs {
+          display: block;
+        }
+        .faculty-profile-content .pull-left.nav-pills {
+          float: none;
+          flex-direction: row;
+        }
+        .faculty-profile-content .tab-content {
+          overflow: visible;
+        }
+      `}</style>
+
+      {/* Script to activate Bootstrap-style tabs */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              function initTabs() {
+                var pills = document.querySelectorAll('.faculty-profile-content .nav-pills a[data-toggle="pill"]');
+                pills.forEach(function(link) {
+                  link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var target = this.getAttribute('href');
+                    // deactivate all
+                    pills.forEach(function(l) { l.parentElement.classList.remove('active'); });
+                    document.querySelectorAll('.faculty-profile-content .tab-pane').forEach(function(p) {
+                      p.classList.remove('active', 'in');
+                    });
+                    // activate clicked
+                    this.parentElement.classList.add('active');
+                    var pane = document.querySelector(target);
+                    if (pane) pane.classList.add('active', 'in');
+                  });
+                });
+                // activate first tab
+                var firstPill = document.querySelector('.faculty-profile-content .nav-pills li.active a');
+                if (firstPill) {
+                  var firstTarget = firstPill.getAttribute('href');
+                  var firstPane = document.querySelector(firstTarget);
+                  if (firstPane) firstPane.classList.add('active', 'in');
+                }
+              }
+              if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initTabs);
+              } else {
+                setTimeout(initTabs, 100);
+              }
+            })();
+          `,
+        }}
+      />
+
       <Footer />
     </div>
   );
