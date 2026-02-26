@@ -50,9 +50,10 @@ const FacultyHTMLDisplay = () => {
           "prof-dr-david-ambrose": "david-ambrose",
           "prof-dr-a-raghunadha-reddy": "prof-a-raghunadha-reddy",
           "prof-dr-reddivari-revathi": "prof-reddivari-revathi",
-          "prof-dr-balraj-chauhan": "",
           "prof-dr-k-i-vibhute": "professor-dr-khushal-vibhute",
-          
+          "prof-dr-balraj-chauhan": "prof-dr-balraj-chauhan",
+          "prof-dr-mehraj-uddin-mir": "prof-dr-mehraj-uddin-mir",
+          "prof-dr-m-prasada-rao": "prof-dr-m-prasada-rao"
         };
 
         const fileName = fileMap[slug || ""] ?? slug;
@@ -76,10 +77,16 @@ const FacultyHTMLDisplay = () => {
           );
         }
 
-        const mainCol = doc.querySelector(".col-md-9");
+        const mainCol =
+          doc.querySelector(".col-md-9") ??
+          doc.querySelector(".col-md-10") ??
+          doc.querySelector(".col-md-8");
         if (mainCol) setProfileContent(mainCol.innerHTML);
 
-        const sidebarCol = doc.querySelector(".col-md-3");
+        const sidebarCol =
+          doc.querySelector(".col-md-3") ??
+          doc.querySelector(".col-md-2") ??
+          doc.querySelector(".faculty-ryt-blk");
         if (sidebarCol) setSidebarContent(sidebarCol.innerHTML);
 
         setError(null);
